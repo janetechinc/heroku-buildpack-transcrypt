@@ -31,7 +31,7 @@ fi
 
 # Find and decrypt the files
 echo "-----> Decrypting files"
-git ls-files \
+git ls-files -o \
   | git check-attr --stdin filter \
   | awk 'BEGIN { FS = ":" }; /crypt$/ { print $1 }' \
   | while read -r filename; do
