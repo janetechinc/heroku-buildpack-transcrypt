@@ -1,0 +1,14 @@
+#!/bin/sh
+
+set -eo pipefail
+
+BUILD_DIR="$1"
+
+if test -f "${BUILD_DIR}/.gitattributes" &&
+   grep -qF filter=crypt "${BUILD_DIR}/.gitattributes";
+then
+  echo "transcrypt"
+  exit 0
+else
+  exit 1
+fi

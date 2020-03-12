@@ -1,0 +1,63 @@
+#!/bin/sh
+
+set -eo pipefail
+
+BUILD_DIR="$1"
+CACHE_DIR="$2"
+ENV_DIR="$3"
+
+if [ ! -f "${ENV_DIR}/TRANSCRYPT_PASSWORD" ]; then
+    echo "-----> Error applying transcrypt buildpack: TRANSCRYPT_PASSWORD is not set"
+    exit 1
+fi
+
+export TRANSCRYPT_PASSWORD="$(cat "${ENV_DIR}/TRANSCRYPT_PASSWORD")"
+if [ -f "$ENV_DIR/TRANSCRYPT_CIPHER" ]; then
+    export TRANSCRYPT_CIPHER="$(cat "${ENV_DIR}/TRANSCRYPT_CIPHER")"
+else
+    export TRANSCRYPT_CIPHER="aes-256-cbc"
+fi
+
+cd "${BUILD_DIR}"
+
+# Heroku build directory is not a git repository.
+# To avoid parsing .gitattributes and filters, create a mock git repo,
+# so we can use git ls-files and git check-attr below.
+fake_git_created=no
+if [ ! -e .git ]; then
+    git init --quiet .
+    fake_git_created=yes
+fi
+
+# Find and decrypt the files
+echo "-----> Decrypting files"
+git ls-files \
+  | git check-attr --stdin filter \
+  | awk 'BEGIN { FS = ":" }; /crypt$/ { print $1 }' \
+  | while read -r filename; do
+      printf "       ${filename}... "
+      read -n 8 firstbytes < "${filename}"
+	  if test "${firstbytes}" = U2FsdGVk; then
+        tempfile="$(mktemp -t "$(basename "${filename}")")"
+        cat "${filename}" > "${tempfile}"
+        openssl enc -"${TRANSCRYPT_CIPHER}" -md MD5 \
+          -pass env:TRANSCRYPT_PASSWORD \
+          -d -a -in "${tempfile}" 2>/dev/null > "${filename}"
+        rm "${tempfile}"
+        echo "OK"
+      else
+        echo "not encrypted"
+      fi
+    done
+
+# Clean up
+unset TRANSCRYPT_PASSWORD
+unset TRANSCRYPT_CIPHER
+test fake_git_created = yes && rm -rf .git
+
+# Create a script in .profile.d to unset transcrypt environment variables
+# While this is not ideal, this adds some shielding of the deployed apps
+# from those values.
+mkdir -p "${BUILD_DIR}/.profile.d"
+printf "unset TRANSCRYPT_PASSWORD\nunset TRANSCRYPT_CIPHER\n" \
+  > "${BUILD_DIR}/.profile.d/transcrypt.sh"
