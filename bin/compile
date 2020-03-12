@@ -38,7 +38,7 @@ git ls-files -o \
       printf "       ${filename}... "
       read -n 8 firstbytes < "${filename}"
 	  if test "${firstbytes}" = U2FsdGVk; then
-        tempfile="$(mktemp -t "$(basename "${filename}")")"
+        tempfile="$(mktemp -t "$(basename "${filename}").XXXXXX")"
         cat "${filename}" > "${tempfile}"
         openssl enc -"${TRANSCRYPT_CIPHER}" -md MD5 \
           -pass env:TRANSCRYPT_PASSWORD \
